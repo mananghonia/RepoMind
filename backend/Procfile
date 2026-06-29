@@ -1,1 +1,1 @@
-web: gunicorn repomind.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 300 --keep-alive 5
+web: /opt/venv/bin/gunicorn repomind.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 300 --keep-alive 5
