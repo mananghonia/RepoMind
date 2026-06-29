@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 
 import chromadb
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from django.conf import settings
 
 from .parser import parse_file, is_indexable, CodeChunk
@@ -36,10 +36,17 @@ def _collection_name(session_id: str) -> str:
     return f"s{session_id.replace('-', '')}"
 
 
+def _get_ef() -> OpenAIEmbeddingFunction:
+    return OpenAIEmbeddingFunction(
+        api_key=settings.OPENAI_API_KEY,
+        model_name="text-embedding-3-small",
+    )
+
+
 def _get_collection(session_id: str) -> chromadb.Collection:
     return _get_client().get_or_create_collection(
         name=_collection_name(session_id),
-        embedding_function=DefaultEmbeddingFunction(),
+        embedding_function=_get_ef(),
         metadata={"hnsw:space": "cosine"},
     )
 
