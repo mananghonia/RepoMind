@@ -2,6 +2,8 @@ import json
 
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from ratelimit.decorators import ratelimit
+from ratelimit.utils import is_ratelimited
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -61,6 +63,8 @@ class SessionDetailView(APIView):
 
 class QueryView(APIView):
     def post(self, request):
+        if is_ratelimited(request, fn=QueryView.post, key="ip", rate="20/m", increment=True):
+            return Response({"error": "Rate limit exceeded. Please wait a moment."}, status=429)
         question = request.data.get("question", "").strip()
         session_id = request.data.get("session_id")
         if not question:
@@ -97,9 +101,13 @@ class QueryView(APIView):
         })
 
 
+@ratelimit(key="ip", rate="20/m", block=False)
 @csrf_exempt
 def stream_query_view(request):
     """SSE streaming endpoint — returns tokens as they arrive from Claude."""
+    if getattr(request, "limited", False):
+        return JsonResponse({"error": "Rate limit exceeded. Please wait a moment."}, status=429)
+
     if request.method == "OPTIONS":
         resp = JsonResponse({})
         resp["Access-Control-Allow-Origin"] = "*"

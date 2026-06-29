@@ -3,13 +3,14 @@ import { getSession, streamQuery, getSessionFiles } from "../api/client";
 import MessageBubble from "./MessageBubble";
 import FileTree from "./FileTree";
 
-const SUGGESTIONS = [
+const FALLBACK_SUGGESTIONS = [
   "What does this codebase do?",
   "How is authentication handled?",
   "Explain the database models",
 ];
 
-function EmptyState({ onSelect }) {
+function EmptyState({ onSelect, suggestions }) {
+  const questions = suggestions?.length === 3 ? suggestions : FALLBACK_SUGGESTIONS;
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12">
       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-5 shadow-xl shadow-indigo-200/50 dark:shadow-indigo-950/50">
@@ -22,7 +23,7 @@ function EmptyState({ onSelect }) {
         Upload a repo ZIP, then ask questions. RepoMind finds the exact functions and classes that answer you.
       </p>
       <div className="mt-7 flex flex-col gap-2 w-full max-w-sm">
-        {SUGGESTIONS.map((q) => (
+        {questions.map((q) => (
           <button key={q} onClick={() => onSelect(q)}
             className="flex items-center gap-3 text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/60 text-sm text-slate-600 dark:text-slate-400 hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-indigo-700 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-all shadow-sm"
           >
@@ -43,6 +44,7 @@ export default function ChatWindow({ sessionId, showTree, onToggleTree, onMessag
   const [loading, setLoading] = useState(false);
   const [treeFiles, setTreeFiles] = useState([]);
   const [error, setError] = useState(null);
+  const [suggestedQuestions, setSuggestedQuestions] = useState([]);
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -51,10 +53,13 @@ export default function ChatWindow({ sessionId, showTree, onToggleTree, onMessag
   useEffect(() => { onMessagesChange?.(messages); }, [messages]);
 
   useEffect(() => {
-    if (!sessionId) { setMessages([]); setError(null); return; }
+    if (!sessionId) { setMessages([]); setError(null); setSuggestedQuestions([]); return; }
     setError(null);
     getSession(sessionId)
-      .then(({ data }) => setMessages(data.messages || []))
+      .then(({ data }) => {
+        setMessages(data.messages || []);
+        setSuggestedQuestions(data.suggested_questions || []);
+      })
       .catch((err) => {
         if (err.response?.status === 404) {
           // Stale session stored in localStorage — clear it and return to upload
@@ -146,7 +151,7 @@ export default function ChatWindow({ sessionId, showTree, onToggleTree, onMessag
         {/* Scrollable messages */}
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
           {messages.length === 0 && !loading ? (
-            <EmptyState onSelect={submit} />
+            <EmptyState onSelect={submit} suggestions={suggestedQuestions} />
           ) : (
             <div className="max-w-4xl mx-auto px-4 py-6 md:px-8">
               {messages.map((m, i) => <MessageBubble key={i} message={m} />)}

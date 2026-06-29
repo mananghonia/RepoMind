@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timezone
 
@@ -79,4 +81,41 @@ def auto_title_session(session_id: str, question: str) -> None:
 
 def _clean(doc: dict) -> dict:
     doc["id"] = doc.pop("_id")
+    return doc
+
+
+def set_suggested_questions(session_id: str, questions: list[str]) -> None:
+    _sessions().update_one(
+        {"_id": session_id},
+        {"$set": {"suggested_questions": questions}},
+    )
+
+
+# ── Task persistence ──────────────────────────────────────────────────────────
+
+def _tasks():
+    return _get_db()["tasks"]
+
+
+def create_task(task_id: str) -> None:
+    _tasks().insert_one({
+        "_id": task_id,
+        "status": "queued",
+        "indexed": 0,
+        "total": 0,
+        "error": "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+def update_task(task_id: str, **kwargs) -> None:
+    _tasks().update_one({"_id": task_id}, {"$set": kwargs})
+
+
+def get_task(task_id: str) -> dict | None:
+    doc = _tasks().find_one({"_id": task_id})
+    if not doc:
+        return None
+    doc.pop("_id")
+    doc.pop("created_at", None)
     return doc

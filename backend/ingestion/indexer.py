@@ -12,9 +12,7 @@ from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from django.conf import settings
 
 from .parser import parse_file, is_indexable, CodeChunk
-
-_tasks: dict[str, dict] = {}
-_tasks_lock = threading.Lock()
+from chat.db import create_task, update_task, get_task, set_suggested_questions
 
 # Singleton ChromaDB client — thread-safe double-checked locking
 _chroma_client: chromadb.PersistentClient | None = None
@@ -135,21 +133,55 @@ def retrieve_chunks(query: str, session_id: str, n_results: int = 5) -> list[dic
         return []
 
 
+# ── Dynamic suggested questions ───────────────────────────────────────────────
+
+def _generate_suggested_questions(chunks: list[CodeChunk], session_id: str) -> None:
+    try:
+        from langchain_anthropic import ChatAnthropic
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        seen_files: dict[str, list[str]] = {}
+        for c in chunks:
+            if c.filename not in seen_files:
+                seen_files[c.filename] = []
+            if c.name and len(seen_files[c.filename]) < 3:
+                seen_files[c.filename].append(c.name)
+
+        lines = [
+            f"  {fname}: {', '.join(names) if names else '...'}"
+            for fname, names in list(seen_files.items())[:20]
+        ]
+
+        llm = ChatAnthropic(
+            model="claude-haiku-4-5-20251001",
+            api_key=settings.ANTHROPIC_API_KEY,
+            temperature=0.3,
+            max_tokens=150,
+        )
+        resp = llm.invoke([
+            SystemMessage(content=(
+                "Generate exactly 3 short questions a developer would ask about this codebase. "
+                "Each question must be under 10 words. Output only the 3 questions, one per line, no numbering or bullets."
+            )),
+            HumanMessage(content="Codebase files and functions:\n" + "\n".join(lines)),
+        ])
+        questions = [q.strip() for q in resp.content.strip().split("\n") if q.strip()][:3]
+        if len(questions) == 3:
+            set_suggested_questions(session_id, questions)
+    except Exception:
+        pass
+
+
 # ── Background tasks ──────────────────────────────────────────────────────────
-
-def _update_task(task_id: str, **kwargs) -> None:
-    with _tasks_lock:
-        _tasks[task_id].update(kwargs)
-
 
 def _run_index_zip(task_id: str, zip_bytes: bytes, session_id: str) -> None:
     try:
-        _update_task(task_id, status="parsing")
+        update_task(task_id, status="parsing")
         all_chunks: list[CodeChunk] = []
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             info_map = {i.filename: i.file_size for i in zf.infolist()}
             names = [n for n in zf.namelist() if is_indexable(n, info_map.get(n, 0))]
-            _update_task(task_id, status="parsing", total=len(names))
+            update_task(task_id, status="parsing", total=len(names))
             for name in names:
                 try:
                     source = zf.read(name).decode("utf-8", errors="ignore")
@@ -158,38 +190,39 @@ def _run_index_zip(task_id: str, zip_bytes: bytes, session_id: str) -> None:
                     continue
 
         if not all_chunks:
-            _update_task(task_id, status="error", error="No indexable code found in this ZIP. Make sure it contains .py, .js, .ts, .java, .go, or similar source files.")
+            update_task(task_id, status="error", error="No indexable code found in this ZIP. Make sure it contains .py, .js, .ts, .java, .go, or similar source files.")
             return
 
-        _update_task(task_id, status="embedding", total=len(all_chunks))
+        update_task(task_id, status="embedding", total=len(all_chunks))
         indexed = _batch_upsert(all_chunks, session_id)
-        _update_task(task_id, status="done", indexed=indexed, total=indexed)
+        _generate_suggested_questions(all_chunks, session_id)
+        update_task(task_id, status="done", indexed=indexed, total=indexed)
     except zipfile.BadZipFile:
-        _update_task(task_id, status="error", error="Invalid or corrupted ZIP file.")
+        update_task(task_id, status="error", error="Invalid or corrupted ZIP file.")
     except Exception as exc:
-        _update_task(task_id, status="error", error=str(exc))
+        update_task(task_id, status="error", error=str(exc))
 
 
 def _run_index_file(task_id: str, source: str, filename: str, session_id: str) -> None:
     try:
-        _update_task(task_id, status="parsing")
+        update_task(task_id, status="parsing")
         chunks = parse_file(source, filename)
         if not chunks:
-            _update_task(task_id, status="error", error="No indexable code found in this file.")
+            update_task(task_id, status="error", error="No indexable code found in this file.")
             return
-        _update_task(task_id, status="embedding", total=len(chunks))
+        update_task(task_id, status="embedding", total=len(chunks))
         indexed = _batch_upsert(chunks, session_id)
-        _update_task(task_id, status="done", indexed=indexed, total=indexed)
+        _generate_suggested_questions(chunks, session_id)
+        update_task(task_id, status="done", indexed=indexed, total=indexed)
     except Exception as exc:
-        _update_task(task_id, status="error", error=str(exc))
+        update_task(task_id, status="error", error=str(exc))
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def start_index_zip(zip_bytes: bytes, session_id: str) -> str:
     task_id = str(uuid.uuid4())
-    with _tasks_lock:
-        _tasks[task_id] = {"status": "queued", "indexed": 0, "total": 0, "error": ""}
+    create_task(task_id)
     threading.Thread(target=_run_index_zip, args=(task_id, zip_bytes, session_id), daemon=True).start()
     return task_id
 
@@ -202,12 +235,10 @@ def start_reindex_zip(zip_bytes: bytes, session_id: str) -> str:
 
 def start_index_file(source: str, filename: str, session_id: str) -> str:
     task_id = str(uuid.uuid4())
-    with _tasks_lock:
-        _tasks[task_id] = {"status": "queued", "indexed": 0, "total": 0, "error": ""}
+    create_task(task_id)
     threading.Thread(target=_run_index_file, args=(task_id, source, filename, session_id), daemon=True).start()
     return task_id
 
 
 def get_task_status(task_id: str) -> dict | None:
-    with _tasks_lock:
-        return dict(_tasks.get(task_id, {})) or None
+    return get_task(task_id)
