@@ -1,0 +1,5 @@
+[phases.setup]
+nixPkgs = ["stdenv.cc.cc.lib"]
+
+[variables]
+LD_LIBRARY_PATH = "/nix/var/nix/profiles/default/lib"
