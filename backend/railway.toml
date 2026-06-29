@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "gunicorn repomind.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 300"
+healthcheckPath = "/api/sessions/"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"

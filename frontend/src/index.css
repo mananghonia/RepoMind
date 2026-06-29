@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { transition: background-color 0.2s, color 0.2s; }
+  body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: #f8fafc;
+  }
+  .dark body { background: #020817; }
+  #root { height: 100vh; overflow: hidden; }
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+.dark ::-webkit-scrollbar-thumb { background: #334155; }
+
+/* ── Streaming cursor ────────────────────────────────────────── */
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.streaming-cursor::after {
+  content: "▋";
+  display: inline-block;
+  color: #6366f1;
+  animation: blink 0.9s step-end infinite;
+  margin-left: 1px;
+  font-size: 0.85em;
+  vertical-align: baseline;
+}
+
+/* ── Prose styles (light) ────────────────────────────────────── */
+.prose-chat {
+  font-size: 0.875rem;
+  line-height: 1.75;
+  color: #1e293b;
+}
+.prose-chat > *:first-child { margin-top: 0 !important; }
+.prose-chat > *:last-child { margin-bottom: 0 !important; }
+
+.prose-chat h1, .prose-chat h2, .prose-chat h3, .prose-chat h4 {
+  font-weight: 650;
+  margin: 1.1rem 0 0.35rem;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+.prose-chat h1 { font-size: 1.1rem; }
+.prose-chat h2 { font-size: 1rem; }
+.prose-chat h3 { font-size: 0.9rem; }
+
+.prose-chat p { margin: 0.6rem 0; }
+
+.prose-chat ul, .prose-chat ol { padding-left: 1.4rem; margin: 0.5rem 0; }
+.prose-chat li { margin: 0.25rem 0; }
+.prose-chat ul > li { list-style-type: disc; }
+.prose-chat ol > li { list-style-type: decimal; }
+
+.prose-chat code {
+  background: #f1f5f9;
+  color: #7c3aed;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 5px;
+  font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  border: 1px solid #e2e8f0;
+}
+.prose-chat pre { margin: 0.75rem 0 !important; border-radius: 10px !important; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+.prose-chat pre code { background: transparent; color: inherit; padding: 0; border: none; font-size: inherit; }
+
+.prose-chat strong { font-weight: 650; color: #0f172a; }
+.prose-chat em { color: #475569; font-style: italic; }
+.prose-chat a { color: #6366f1; text-decoration: underline; text-underline-offset: 2px; }
+.prose-chat a:hover { color: #4f46e5; }
+
+.prose-chat hr { border: none; border-top: 1px solid #e2e8f0; margin: 1rem 0; }
+
+.prose-chat blockquote {
+  border-left: 3px solid #818cf8;
+  padding: 0.1rem 0 0.1rem 0.85rem;
+  color: #64748b;
+  margin: 0.75rem 0;
+  background: #f8fafc;
+  border-radius: 0 6px 6px 0;
+}
+
+.prose-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin: 0.75rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+.prose-chat th {
+  background: #f8fafc;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  font-weight: 600;
+  text-align: left;
+  color: #475569;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.prose-chat td {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+.prose-chat tr:nth-child(even) td { background: #f8fafc; }
+
+/* ── Prose styles (dark) ─────────────────────────────────────── */
+.dark .prose-chat { color: #cbd5e1; }
+
+.dark .prose-chat h1, .dark .prose-chat h2,
+.dark .prose-chat h3, .dark .prose-chat h4 { color: #f1f5f9; }
+
+.dark .prose-chat code {
+  background: #1e293b;
+  color: #a78bfa;
+  border-color: #334155;
+}
+
+.dark .prose-chat strong { color: #f1f5f9; }
+.dark .prose-chat em { color: #94a3b8; }
+.dark .prose-chat a { color: #818cf8; }
+.dark .prose-chat a:hover { color: #a5b4fc; }
+
+.dark .prose-chat hr { border-top-color: #1e293b; }
+
+.dark .prose-chat blockquote {
+  border-left-color: #6366f1;
+  color: #94a3b8;
+  background: #0f172a;
+}
+
+.dark .prose-chat table { border-color: #1e293b; }
+.dark .prose-chat th {
+  background: #0f172a;
+  border-color: #1e293b;
+  color: #94a3b8;
+}
+.dark .prose-chat td { border-color: #1e293b; }
+.dark .prose-chat tr:nth-child(even) td { background: #0f172a; }
