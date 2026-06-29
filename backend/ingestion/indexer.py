@@ -14,15 +14,26 @@ from .parser import parse_file, is_indexable, CodeChunk
 _tasks: dict[str, dict] = {}
 _tasks_lock = threading.Lock()
 
+# Singleton ChromaDB client — thread-safe double-checked locking
+_chroma_client: chromadb.PersistentClient | None = None
+_chroma_client_lock = threading.Lock()
+
+MAX_ZIP_BYTES = 100 * 1024 * 1024  # 100 MB
+
+
+def _get_client() -> chromadb.PersistentClient:
+    global _chroma_client
+    if _chroma_client is None:
+        with _chroma_client_lock:
+            if _chroma_client is None:
+                _chroma_client = chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIR)
+    return _chroma_client
+
 
 # ── ChromaDB — per-session collections ───────────────────────────────────────
 
 def _collection_name(session_id: str) -> str:
     return f"s{session_id.replace('-', '')}"
-
-
-def _get_client() -> chromadb.PersistentClient:
-    return chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIR)
 
 
 def _get_collection(session_id: str) -> chromadb.Collection:
@@ -40,16 +51,17 @@ def delete_session_collection(session_id: str) -> None:
         pass
 
 
-def get_session_files(session_id: str) -> list[str]:
-    """Return sorted list of unique filenames indexed for this session."""
+def get_session_files(session_id: str) -> tuple[list[str], int]:
+    """Return (sorted filenames, chunk count) for this session."""
     try:
         collection = _get_collection(session_id)
-        if collection.count() == 0:
-            return []
+        count = collection.count()
+        if count == 0:
+            return [], 0
         results = collection.get(include=["metadatas"])
-        return sorted({m["filename"] for m in results["metadatas"]})
+        return sorted({m["filename"] for m in results["metadatas"]}), count
     except Exception:
-        return []
+        return [], 0
 
 
 def _chunk_id(chunk: CodeChunk) -> str:
@@ -135,9 +147,16 @@ def _run_index_zip(task_id: str, zip_bytes: bytes, session_id: str) -> None:
                     all_chunks.extend(parse_file(source, str(Path(name))))
                 except Exception:
                     continue
+
+        if not all_chunks:
+            _update_task(task_id, status="error", error="No indexable code found in this ZIP. Make sure it contains .py, .js, .ts, .java, .go, or similar source files.")
+            return
+
         _update_task(task_id, status="embedding", total=len(all_chunks))
         indexed = _batch_upsert(all_chunks, session_id)
         _update_task(task_id, status="done", indexed=indexed, total=indexed)
+    except zipfile.BadZipFile:
+        _update_task(task_id, status="error", error="Invalid or corrupted ZIP file.")
     except Exception as exc:
         _update_task(task_id, status="error", error=str(exc))
 
@@ -146,6 +165,9 @@ def _run_index_file(task_id: str, source: str, filename: str, session_id: str) -
     try:
         _update_task(task_id, status="parsing")
         chunks = parse_file(source, filename)
+        if not chunks:
+            _update_task(task_id, status="error", error="No indexable code found in this file.")
+            return
         _update_task(task_id, status="embedding", total=len(chunks))
         indexed = _batch_upsert(chunks, session_id)
         _update_task(task_id, status="done", indexed=indexed, total=indexed)

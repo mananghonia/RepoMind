@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { uploadZip, getUploadStatus, reindexZip } from "../api/client";
+import { useState, useRef, useEffect } from "react";
+import { uploadZip, getUploadStatus, reindexZip, getSessionFiles } from "../api/client";
 
 const POLL = 1500;
 
@@ -34,13 +34,22 @@ export default function SessionHeader({
   activeSession, onSessionReady,
   showTree, onToggleTree, onExport, hasMessages,
 }) {
-  const [phase, setPhase] = useState(null);   // null | uploading | parsing | embedding | done | error
+  const [phase, setPhase] = useState(null);
   const [message, setMessage] = useState("");
   const [indexed, setIndexed] = useState(0);
-  const [reindex, setReindex] = useState(null); // null | busy | done
+  const [reindex, setReindex] = useState(null);
   const inputRef = useRef(null);
   const reindexRef = useRef(null);
   const pollRef = useRef(null);
+
+  // When restoring a session from localStorage, fetch actual chunk count
+  useEffect(() => {
+    if (activeSession && phase === null) {
+      getSessionFiles(activeSession)
+        .then(({ data }) => { if (data.chunks > 0) setIndexed(data.chunks); })
+        .catch(() => {});
+    }
+  }, [activeSession]);
 
   const stopPoll = () => { clearInterval(pollRef.current); };
 
@@ -67,12 +76,19 @@ export default function SessionHeader({
           }
         } else if (data.status === "error") {
           stopPoll();
-          if (isReindex) setReindex(null);
+          if (isReindex) { setReindex(null); }
           else { setPhase("error"); setMessage(data.error || "Indexing failed"); }
         }
-      } catch {
+      } catch (err) {
         stopPoll();
-        if (!isReindex) { setPhase("error"); setMessage("Connection lost"); }
+        if (!isReindex) {
+          // 404 means the server restarted and lost the task
+          const msg = err.response?.status === 404
+            ? "Server restarted mid-upload. Please try again."
+            : "Connection lost during indexing.";
+          setPhase("error");
+          setMessage(msg);
+        }
       }
     }, POLL);
   };
@@ -88,7 +104,8 @@ export default function SessionHeader({
       setPhase("parsing"); setMessage("Parsing files…");
       startPoll(data.task_id, data.session_id);
     } catch (e) {
-      setPhase("error"); setMessage(e.response?.data?.error || "Upload failed");
+      setPhase("error");
+      setMessage(e.response?.data?.error || "Upload failed. Check file and try again.");
     }
   };
 
@@ -99,7 +116,9 @@ export default function SessionHeader({
     try {
       const { data } = await reindexZip(activeSession, file);
       startPoll(data.task_id, activeSession, true);
-    } catch { setReindex(null); }
+    } catch (e) {
+      setReindex(null);
+    }
   };
 
   const onDrop = (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); };
@@ -107,7 +126,7 @@ export default function SessionHeader({
   const isDone = phase === "done";
   const isError = phase === "error";
 
-  // ── Compact session bar (shown after successful index) ────────────────────
+  // ── Compact session bar (shown after successful index OR restored session) ──
   if (isDone || (activeSession && phase === null)) {
     return (
       <div className="flex items-center px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 gap-3">
@@ -133,10 +152,8 @@ export default function SessionHeader({
         </div>
         <input ref={inputRef} type="file" accept=".zip" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
 
-        {/* Divider */}
         <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
 
-        {/* Action buttons */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {/* Re-index */}
           <ActionBtn
@@ -161,9 +178,7 @@ export default function SessionHeader({
             disabled={!hasMessages}
             title="Export conversation as Markdown"
             label="Export"
-            icon={
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-            }
+            icon={<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>}
           />
 
           {/* Files */}
@@ -172,16 +187,14 @@ export default function SessionHeader({
             active={showTree}
             title="Browse indexed files"
             label="Files"
-            icon={
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-            }
+            icon={<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>}
           />
         </div>
       </div>
     );
   }
 
-  // ── Upload zone (shown when no active session) ────────────────────────────
+  // ── Upload zone ────────────────────────────────────────────────────────────
   return (
     <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
       <div
@@ -195,7 +208,6 @@ export default function SessionHeader({
             ? "border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30"
             : "border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/30 cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20"}`}
       >
-        {/* Icon */}
         <div className={`w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center
           ${isError ? "bg-red-100 dark:bg-red-900/30" : "bg-indigo-100 dark:bg-indigo-900/30"}`}>
           {isError ? (
@@ -214,13 +226,18 @@ export default function SessionHeader({
                 Drop your repo <span className="text-indigo-600 dark:text-indigo-400">.zip</span> to start
               </p>
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                Python · JS/TS · Java · Go · Rust · C# · Spring · FastAPI · MERN — each upload is isolated
+                Python · JS/TS · Java · Go · Rust · C# · max 100 MB · each upload is isolated
               </p>
             </>
           ) : (
-            <p className={`text-sm font-medium ${isError ? "text-red-600 dark:text-red-400" : "text-indigo-700 dark:text-indigo-400"}`}>
-              {message}
-            </p>
+            <>
+              <p className={`text-sm font-medium ${isError ? "text-red-600 dark:text-red-400" : "text-indigo-700 dark:text-indigo-400"}`}>
+                {message}
+              </p>
+              {isError && (
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Click to try again</p>
+              )}
+            </>
           )}
         </div>
 

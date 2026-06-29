@@ -78,6 +78,7 @@ export default function App() {
             onToggleTree={() => setShowTree((v) => !v)}
             onMessagesChange={handleMessagesChange}
             onSessionCreated={(id) => { setActiveSession(id); refreshSidebar(); }}
+            onStaleSession={() => { setActiveSession(null); setUploadKey((k) => k + 1); }}
           />
         </div>
       </main>

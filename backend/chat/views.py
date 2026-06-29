@@ -15,16 +15,25 @@ from .db import (
 
 class SessionListView(APIView):
     def get(self, request):
-        return Response(list_sessions())
+        try:
+            return Response(list_sessions())
+        except Exception as exc:
+            return Response({"error": f"Database error: {exc}"}, status=503)
 
     def post(self, request):
-        title = request.data.get("title", "New chat")
-        return Response(create_session(title), status=201)
+        try:
+            title = request.data.get("title", "New chat")
+            return Response(create_session(title), status=201)
+        except Exception as exc:
+            return Response({"error": f"Database error: {exc}"}, status=503)
 
 
 class SessionDetailView(APIView):
     def get(self, request, session_id):
-        session = get_session(session_id)
+        try:
+            session = get_session(session_id)
+        except Exception as exc:
+            return Response({"error": f"Database error: {exc}"}, status=503)
         if not session:
             return Response({"error": "Session not found."}, status=404)
         return Response(session)
@@ -33,14 +42,20 @@ class SessionDetailView(APIView):
         title = request.data.get("title", "").strip()
         if not title:
             return Response({"error": "title is required."}, status=400)
-        if rename_session(session_id, title):
-            return Response({"id": session_id, "title": title})
+        try:
+            if rename_session(session_id, title):
+                return Response({"id": session_id, "title": title})
+        except Exception as exc:
+            return Response({"error": f"Database error: {exc}"}, status=503)
         return Response({"error": "Session not found."}, status=404)
 
     def delete(self, request, session_id):
-        if delete_session(session_id):
-            delete_session_collection(session_id)
-            return Response(status=204)
+        try:
+            if delete_session(session_id):
+                delete_session_collection(session_id)
+                return Response(status=204)
+        except Exception as exc:
+            return Response({"error": f"Database error: {exc}"}, status=503)
         return Response({"error": "Session not found."}, status=404)
 
 
@@ -52,17 +67,28 @@ class QueryView(APIView):
             return Response({"error": "question is required."}, status=400)
         if not session_id:
             return Response({"error": "session_id is required."}, status=400)
-        session = get_session(session_id)
+        try:
+            session = get_session(session_id)
+        except Exception as exc:
+            return Response({"error": f"Database error: {exc}"}, status=503)
         if not session:
             return Response({"error": "Session not found."}, status=404)
 
         history = session.get("messages", [])[-10:]
         chat_history = [{"role": m["role"], "content": m["content"]} for m in history]
-        result = run_agent(question=question, session_id=session_id, chat_history=chat_history)
-        append_message(session_id, "user", question)
-        append_message(session_id, "assistant", result["answer"], result["citations"])
-        if len(history) == 0:
-            auto_title_session(session_id, question)
+        try:
+            result = run_agent(question=question, session_id=session_id, chat_history=chat_history)
+        except Exception as exc:
+            return Response({"error": f"Agent error: {exc}"}, status=500)
+
+        try:
+            append_message(session_id, "user", question)
+            append_message(session_id, "assistant", result["answer"], result["citations"])
+            if len(history) == 0:
+                auto_title_session(session_id, question)
+        except Exception:
+            pass  # best-effort save
+
         return Response({
             "session_id": session_id,
             "answer": result["answer"],
@@ -97,7 +123,11 @@ def stream_query_view(request):
     if not session_id:
         return JsonResponse({"error": "session_id is required."}, status=400)
 
-    session = get_session(session_id)
+    try:
+        session = get_session(session_id)
+    except Exception as exc:
+        return JsonResponse({"error": f"Database unavailable: {exc}"}, status=503)
+
     if not session:
         return JsonResponse({"error": "Session not found."}, status=404)
 
@@ -119,13 +149,25 @@ def stream_query_view(request):
                     chunks_used = payload["chunks_used"]
                     yield f"data: {json.dumps({'type': 'done', 'citations': citations, 'chunks_used': chunks_used})}\n\n"
         except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+            # Map common errors to user-friendly messages
+            msg = str(exc)
+            if "rate_limit" in msg.lower() or "429" in msg:
+                msg = "Claude API rate limit reached. Please wait a moment and try again."
+            elif "authentication" in msg.lower() or "401" in msg:
+                msg = "Claude API key error. Please contact support."
+            elif "overloaded" in msg.lower() or "529" in msg:
+                msg = "Claude API is overloaded. Please try again in a few seconds."
+            yield f"data: {json.dumps({'type': 'error', 'content': msg})}\n\n"
             return
 
-        append_message(session_id, "user", question)
-        append_message(session_id, "assistant", full_answer, citations)
-        if is_first:
-            auto_title_session(session_id, question)
+        # Best-effort message persistence — don't let DB errors surface to the client
+        try:
+            append_message(session_id, "user", question)
+            append_message(session_id, "assistant", full_answer, citations)
+            if is_first:
+                auto_title_session(session_id, question)
+        except Exception:
+            pass
 
     resp = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     resp["Cache-Control"] = "no-cache"

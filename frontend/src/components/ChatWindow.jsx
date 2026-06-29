@@ -37,24 +37,32 @@ function EmptyState({ onSelect }) {
   );
 }
 
-export default function ChatWindow({ sessionId, showTree, onToggleTree, onMessagesChange, onSessionCreated }) {
+export default function ChatWindow({ sessionId, showTree, onToggleTree, onMessagesChange, onSessionCreated, onStaleSession }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [treeFiles, setTreeFiles] = useState([]);
+  const [error, setError] = useState(null);
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
-  // true when user is scrolled near bottom (auto-scroll follows)
   const nearBottomRef = useRef(true);
 
   useEffect(() => { onMessagesChange?.(messages); }, [messages]);
 
   useEffect(() => {
-    if (!sessionId) { setMessages([]); return; }
+    if (!sessionId) { setMessages([]); setError(null); return; }
+    setError(null);
     getSession(sessionId)
       .then(({ data }) => setMessages(data.messages || []))
-      .catch(() => {});
+      .catch((err) => {
+        if (err.response?.status === 404) {
+          // Stale session stored in localStorage — clear it and return to upload
+          onStaleSession?.();
+        } else {
+          setError("Could not load chat history. The database may be unavailable.");
+        }
+      });
   }, [sessionId]);
 
   // Auto-scroll only when user is near the bottom
@@ -125,6 +133,16 @@ export default function ChatWindow({ sessionId, showTree, onToggleTree, onMessag
   return (
     <div className="flex h-full">
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-950">
+        {/* Error banner */}
+        {error && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-900/50">
+            <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+            <p className="text-xs text-red-600 dark:text-red-400 flex-1">{error}</p>
+            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+        )}
         {/* Scrollable messages */}
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
           {messages.length === 0 && !loading ? (
