@@ -109,7 +109,7 @@ export default function MessageBubble({ message }) {
           {/* Meta */}
           {!isUser && !isStreaming && message.chunks_used > 0 && (
             <p className="text-[10px] text-slate-300 dark:text-slate-600 px-0.5">
-              {message.chunks_used} chunk{message.chunks_used !== 1 ? "s" : ""} · 1 API call
+              {message.chunks_used} chunk{message.chunks_used !== 1 ? "s" : ""} retrieved
             </p>
           )}
         </div>

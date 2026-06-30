@@ -354,6 +354,9 @@ _LINE_LANGS = {"sql", "html", "css", "markdown", "yaml", "json", "xml", "shell",
 
 
 def parse_file(source: str, filename: str) -> list[CodeChunk]:
+    if not source or not source.strip():
+        return []
+
     language = detect_language(filename)
 
     if language == "python":

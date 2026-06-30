@@ -51,6 +51,7 @@ export default function App() {
   const handleMessagesChange = (msgs) => {
     messagesRef.current = msgs;
     setMessageCount(msgs.length);
+    if (msgs.length === 2) refreshSidebar();
   };
 
   return (

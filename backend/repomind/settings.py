@@ -97,3 +97,7 @@ CHROMA_PERSIST_DIR = os.environ.get(
     "CHROMA_PERSIST_DIR",
     str(BASE_DIR / "chroma_db"),
 )
+
+# Allow large ZIP uploads (up to 300 MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 300 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 300 * 1024 * 1024
