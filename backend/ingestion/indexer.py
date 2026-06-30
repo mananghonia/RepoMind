@@ -18,7 +18,7 @@ from chat.db import create_task, update_task, get_task, set_suggested_questions
 _chroma_client: chromadb.PersistentClient | None = None
 _chroma_client_lock = threading.Lock()
 
-MAX_ZIP_BYTES = 100 * 1024 * 1024  # 100 MB
+MAX_ZIP_BYTES = 250 * 1024 * 1024  # 250 MB
 
 
 def _get_client() -> chromadb.PersistentClient:
