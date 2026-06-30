@@ -32,6 +32,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "repomind.middleware.JWTAuthMiddleware",
 ]
 
 # CORS — accept from any origin in production (frontend URL set via env)
@@ -85,6 +86,10 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.MultiPartParser",
     ],
 }
+
+# Auth
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+JWT_SECRET = os.environ.get("JWT_SECRET", "change-me-in-production")
 
 # External services
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")

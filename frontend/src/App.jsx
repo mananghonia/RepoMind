@@ -2,8 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import SessionHeader from "./components/SessionHeader";
+import LoginPage from "./components/LoginPage";
+import { logout } from "./api/client";
 
 export default function App() {
+  const [authed, setAuthed] = useState(() => !!localStorage.getItem("rm_token"));
   const [activeSession, setActiveSession] = useState(() => localStorage.getItem("rm_session") || null);
   const [sidebarKey, setSidebarKey] = useState(0);
   const [uploadKey, setUploadKey] = useState(0);
@@ -54,12 +57,15 @@ export default function App() {
     if (msgs.length === 2) refreshSidebar();
   };
 
+  if (!authed) return <LoginPage onLogin={() => setAuthed(true)} />;
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
       <Sidebar
         activeId={activeSession}
         onSelect={(id) => { setActiveSession(id); setShowTree(false); }}
         onNew={handleNewChat}
+        onLogout={logout}
         refreshKey={sidebarKey}
       />
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">

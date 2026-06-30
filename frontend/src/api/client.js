@@ -3,6 +3,31 @@ import axios from "axios";
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 const api = axios.create({ baseURL: BASE });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("rm_token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem("rm_token");
+      window.location.href = "/";
+    }
+    return Promise.reject(err);
+  }
+);
+
+export const login = (password) =>
+  axios.post(`${BASE}/auth/login/`, { password });
+
+export const logout = () => {
+  localStorage.removeItem("rm_token");
+  window.location.href = "/";
+};
+
 export const uploadZip = (file) => {
   const form = new FormData();
   form.append("file", file);
@@ -32,9 +57,13 @@ export const sendQuery = (question, session_id) =>
 
 // SSE streaming — calls onToken for each token, onDone when complete
 export const streamQuery = async (question, session_id, onToken, onDone, onError) => {
+  const token = localStorage.getItem("rm_token");
   const response = await fetch(`${BASE}/query/stream/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ question, session_id }),
   });
 

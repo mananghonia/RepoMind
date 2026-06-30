@@ -1,10 +1,27 @@
 import json
 
+from django.conf import settings
 from django.core.cache import cache
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 from rest_framework.response import Response
+
+from .auth import create_token
+
+
+@csrf_exempt
+def login_view(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+    password = data.get("password", "")
+    if not settings.ADMIN_PASSWORD or password != settings.ADMIN_PASSWORD:
+        return JsonResponse({"error": "Invalid password."}, status=401)
+    return JsonResponse({"token": create_token()})
 
 def _is_rate_limited(request, limit=20, window=60):
     ip = request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "unknown")).split(",")[0].strip()
