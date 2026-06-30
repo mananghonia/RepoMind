@@ -88,7 +88,6 @@ REST_FRAMEWORK = {
 }
 
 # Auth
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 JWT_SECRET = os.environ.get("JWT_SECRET", "change-me-in-production")
 
 # External services

@@ -84,6 +84,29 @@ def _clean(doc: dict) -> dict:
     return doc
 
 
+# ── User management ───────────────────────────────────────────────────────────
+
+def _users():
+    return _get_db()["users"]
+
+
+def create_user(username: str, password_hash: str) -> None:
+    _users().insert_one({
+        "_id": username.lower(),
+        "username": username,
+        "password_hash": password_hash,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+def get_user(username: str) -> dict | None:
+    return _users().find_one({"_id": username.lower()})
+
+
+def user_exists(username: str) -> bool:
+    return _users().count_documents({"_id": username.lower()}) > 0
+
+
 def set_suggested_questions(session_id: str, questions: list[str]) -> None:
     _sessions().update_one(
         {"_id": session_id},

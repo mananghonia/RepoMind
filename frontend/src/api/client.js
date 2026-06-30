@@ -20,11 +20,15 @@ api.interceptors.response.use(
   }
 );
 
-export const login = (password) =>
-  axios.post(`${BASE}/auth/login/`, { password });
+export const login = (username, password) =>
+  axios.post(`${BASE}/auth/login/`, { username, password });
+
+export const signup = (username, password) =>
+  axios.post(`${BASE}/auth/signup/`, { username, password });
 
 export const logout = () => {
   localStorage.removeItem("rm_token");
+  localStorage.removeItem("rm_username");
   window.location.href = "/";
 };
 

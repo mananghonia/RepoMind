@@ -147,18 +147,23 @@ export default function Sidebar({ activeId, onSelect, onNew, onLogout, refreshKe
         ))}
       </div>
 
-      {/* Footer: dark mode + logout */}
+      {/* Footer: user + dark mode + logout */}
       <div className="px-4 py-4 border-t border-white/5 flex items-center justify-between gap-2">
-        <button
-          onClick={onLogout}
-          title="Sign out"
-          className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-red-400 transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Sign out
-        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-white uppercase">
+            {(localStorage.getItem("rm_username") || "?")[0]}
+          </div>
+          <span className="text-[11px] text-slate-400 truncate">{localStorage.getItem("rm_username") || "User"}</span>
+          <button
+            onClick={onLogout}
+            title="Sign out"
+            className="text-slate-600 hover:text-red-400 transition-colors flex-shrink-0"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
+        </div>
         <button
           onClick={() => setDark((d) => !d)}
           title={dark ? "Switch to light mode" : "Switch to dark mode"}

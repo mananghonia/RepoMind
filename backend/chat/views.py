@@ -1,13 +1,13 @@
 import json
 
-from django.conf import settings
 from django.core.cache import cache
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from .auth import create_token
+from .auth import create_token, hash_password, verify_password
+from .db import get_user, create_user, user_exists
 
 
 @csrf_exempt
@@ -18,10 +18,36 @@ def login_view(request):
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON."}, status=400)
+    username = data.get("username", "").strip()
     password = data.get("password", "")
-    if not settings.ADMIN_PASSWORD or password != settings.ADMIN_PASSWORD:
-        return JsonResponse({"error": "Invalid password."}, status=401)
-    return JsonResponse({"token": create_token()})
+    if not username or not password:
+        return JsonResponse({"error": "Username and password are required."}, status=400)
+    user = get_user(username)
+    if not user or not verify_password(password, user["password_hash"]):
+        return JsonResponse({"error": "Invalid username or password."}, status=401)
+    return JsonResponse({"token": create_token(user["username"]), "username": user["username"]})
+
+
+@csrf_exempt
+def signup_view(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+    if not username or not password:
+        return JsonResponse({"error": "Username and password are required."}, status=400)
+    if len(username) < 3:
+        return JsonResponse({"error": "Username must be at least 3 characters."}, status=400)
+    if len(password) < 6:
+        return JsonResponse({"error": "Password must be at least 6 characters."}, status=400)
+    if user_exists(username):
+        return JsonResponse({"error": "Username already taken."}, status=409)
+    create_user(username, hash_password(password))
+    return JsonResponse({"token": create_token(username), "username": username}, status=201)
 
 def _is_rate_limited(request, limit=20, window=60):
     ip = request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "unknown")).split(",")[0].strip()

@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from chat.auth import verify_token
 
-_PUBLIC_PATHS = {"/api/auth/login/", "/health/"}
+_PUBLIC_PATHS = {"/api/auth/login/", "/api/auth/signup/", "/health/"}
 
 
 class JWTAuthMiddleware:
