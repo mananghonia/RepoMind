@@ -1,11 +1,20 @@
 import json
 
+from django.core.cache import cache
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from ratelimit.decorators import ratelimit
-from ratelimit.utils import is_ratelimited
 from rest_framework.views import APIView
 from rest_framework.response import Response
+
+def _is_rate_limited(request, limit=20, window=60):
+    ip = request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "unknown")).split(",")[0].strip()
+    key = f"rl:{ip}"
+    count = cache.get(key, 0)
+    if count >= limit:
+        return True
+    cache.set(key, count + 1, timeout=window)
+    return False
+
 
 from agent.graph import run_agent, stream_agent
 from ingestion.indexer import delete_session_collection
@@ -63,7 +72,7 @@ class SessionDetailView(APIView):
 
 class QueryView(APIView):
     def post(self, request):
-        if is_ratelimited(request, fn=QueryView.post, key="ip", rate="20/m", increment=True):
+        if _is_rate_limited(request):
             return Response({"error": "Rate limit exceeded. Please wait a moment."}, status=429)
         question = request.data.get("question", "").strip()
         session_id = request.data.get("session_id")
@@ -101,11 +110,9 @@ class QueryView(APIView):
         })
 
 
-@ratelimit(key="ip", rate="20/m", block=False)
 @csrf_exempt
 def stream_query_view(request):
-    """SSE streaming endpoint — returns tokens as they arrive from Claude."""
-    if getattr(request, "limited", False):
+    if _is_rate_limited(request):
         return JsonResponse({"error": "Rate limit exceeded. Please wait a moment."}, status=429)
 
     if request.method == "OPTIONS":
