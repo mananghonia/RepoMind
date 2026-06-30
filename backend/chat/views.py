@@ -70,14 +70,14 @@ from .db import (
 class SessionListView(APIView):
     def get(self, request):
         try:
-            return Response(list_sessions())
+            return Response(list_sessions(owner=request.user_id))
         except Exception as exc:
             return Response({"error": f"Database error: {exc}"}, status=503)
 
     def post(self, request):
         try:
             title = request.data.get("title", "New chat")
-            return Response(create_session(title), status=201)
+            return Response(create_session(title, owner=request.user_id), status=201)
         except Exception as exc:
             return Response({"error": f"Database error: {exc}"}, status=503)
 
@@ -85,7 +85,7 @@ class SessionListView(APIView):
 class SessionDetailView(APIView):
     def get(self, request, session_id):
         try:
-            session = get_session(session_id)
+            session = get_session(session_id, owner=request.user_id)
         except Exception as exc:
             return Response({"error": f"Database error: {exc}"}, status=503)
         if not session:
@@ -97,7 +97,7 @@ class SessionDetailView(APIView):
         if not title:
             return Response({"error": "title is required."}, status=400)
         try:
-            if rename_session(session_id, title):
+            if rename_session(session_id, title, owner=request.user_id):
                 return Response({"id": session_id, "title": title})
         except Exception as exc:
             return Response({"error": f"Database error: {exc}"}, status=503)
@@ -105,7 +105,7 @@ class SessionDetailView(APIView):
 
     def delete(self, request, session_id):
         try:
-            if delete_session(session_id):
+            if delete_session(session_id, owner=request.user_id):
                 delete_session_collection(session_id)
                 return Response(status=204)
         except Exception as exc:
@@ -124,7 +124,7 @@ class QueryView(APIView):
         if not session_id:
             return Response({"error": "session_id is required."}, status=400)
         try:
-            session = get_session(session_id)
+            session = get_session(session_id, owner=request.user_id)
         except Exception as exc:
             return Response({"error": f"Database error: {exc}"}, status=503)
         if not session:
@@ -182,7 +182,7 @@ def stream_query_view(request):
         return JsonResponse({"error": "session_id is required."}, status=400)
 
     try:
-        session = get_session(session_id)
+        session = get_session(session_id, owner=getattr(request, "user_id", ""))
     except Exception as exc:
         return JsonResponse({"error": f"Database unavailable: {exc}"}, status=503)
 

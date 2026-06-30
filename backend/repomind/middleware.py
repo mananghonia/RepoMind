@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from chat.auth import verify_token
+from chat.auth import decode_token
 
 _PUBLIC_PATHS = {"/api/auth/login/", "/api/auth/signup/", "/health/"}
 
@@ -15,7 +15,9 @@ class JWTAuthMiddleware:
         if request.path.startswith("/api/"):
             auth = request.META.get("HTTP_AUTHORIZATION", "")
             token = auth.removeprefix("Bearer ").strip()
-            if not token or not verify_token(token):
+            payload = decode_token(token) if token else None
+            if not payload:
                 return JsonResponse({"error": "Authentication required."}, status=401)
+            request.user_id = payload.get("sub", "")
 
         return self.get_response(request)

@@ -22,9 +22,10 @@ def _sessions():
 
 # ── Session CRUD ──────────────────────────────────────────────────────────────
 
-def create_session(title: str = "New chat") -> dict:
+def create_session(title: str = "New chat", owner: str = "") -> dict:
     doc = {
         "_id": str(uuid.uuid4()),
+        "owner": owner,
         "title": title,
         "messages": [],
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -34,13 +35,17 @@ def create_session(title: str = "New chat") -> dict:
     return _clean(doc)
 
 
-def get_session(session_id: str) -> dict | None:
-    doc = _sessions().find_one({"_id": session_id})
+def get_session(session_id: str, owner: str = "") -> dict | None:
+    query: dict = {"_id": session_id}
+    if owner:
+        query["owner"] = owner
+    doc = _sessions().find_one(query)
     return _clean(doc) if doc else None
 
 
-def list_sessions() -> list[dict]:
-    docs = _sessions().find({}, {"messages": 0}).sort("updated_at", -1).limit(50)
+def list_sessions(owner: str = "") -> list[dict]:
+    query: dict = {"owner": owner} if owner else {}
+    docs = _sessions().find(query, {"messages": 0}).sort("updated_at", -1).limit(50)
     return [_clean(d) for d in docs]
 
 
@@ -61,14 +66,20 @@ def append_message(session_id: str, role: str, content: str, citations: list | N
     return msg
 
 
-def delete_session(session_id: str) -> bool:
-    result = _sessions().delete_one({"_id": session_id})
+def delete_session(session_id: str, owner: str = "") -> bool:
+    query: dict = {"_id": session_id}
+    if owner:
+        query["owner"] = owner
+    result = _sessions().delete_one(query)
     return result.deleted_count > 0
 
 
-def rename_session(session_id: str, title: str) -> bool:
+def rename_session(session_id: str, title: str, owner: str = "") -> bool:
+    query: dict = {"_id": session_id}
+    if owner:
+        query["owner"] = owner
     result = _sessions().update_one(
-        {"_id": session_id},
+        query,
         {"$set": {"title": title, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
     return result.matched_count > 0
