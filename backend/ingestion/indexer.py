@@ -84,6 +84,9 @@ _BATCH_SIZE = 100
 def _batch_upsert(chunks: list[CodeChunk], session_id: str) -> int:
     if not chunks:
         return 0
+    chunks = [c for c in chunks if c.code and c.code.strip()]
+    if not chunks:
+        return 0
     collection = _get_collection(session_id)
     total = 0
     for i in range(0, len(chunks), _BATCH_SIZE):
