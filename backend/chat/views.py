@@ -50,8 +50,9 @@ def signup_view(request):
     return JsonResponse({"token": create_token(username), "username": username}, status=201)
 
 def _is_rate_limited(request, limit=20, window=60):
-    ip = request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "unknown")).split(",")[0].strip()
-    key = f"rl:{ip}"
+    identity = getattr(request, "user_id", None) or \
+        request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "unknown")).split(",")[0].strip()
+    key = f"rl:{identity}"
     count = cache.get(key, 0)
     if count >= limit:
         return True
@@ -124,7 +125,7 @@ class QueryView(APIView):
         if not session_id:
             return Response({"error": "session_id is required."}, status=400)
         try:
-            session = get_session(session_id, owner=request.user_id)
+            session = get_session(session_id, owner=request.user_id, history_limit=10)
         except Exception as exc:
             return Response({"error": f"Database error: {exc}"}, status=503)
         if not session:
@@ -182,7 +183,7 @@ def stream_query_view(request):
         return JsonResponse({"error": "session_id is required."}, status=400)
 
     try:
-        session = get_session(session_id, owner=getattr(request, "user_id", ""))
+        session = get_session(session_id, owner=getattr(request, "user_id", ""), history_limit=10)
     except Exception as exc:
         return JsonResponse({"error": f"Database unavailable: {exc}"}, status=503)
 

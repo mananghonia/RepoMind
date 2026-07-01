@@ -10,7 +10,7 @@ const FALLBACK_SUGGESTIONS = [
 ];
 
 function EmptyState({ onSelect, suggestions }) {
-  const questions = suggestions?.length === 3 ? suggestions : FALLBACK_SUGGESTIONS;
+  const questions = suggestions?.length >= 1 ? suggestions : FALLBACK_SUGGESTIONS;
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12">
       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-5 shadow-xl shadow-indigo-200/50 dark:shadow-indigo-950/50">

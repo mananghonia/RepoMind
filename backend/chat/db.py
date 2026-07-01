@@ -3,17 +3,27 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from django.conf import settings
 
 _client: MongoClient | None = None
+_indexes_ensured = False
 
 
 def _get_db():
-    global _client
+    global _client, _indexes_ensured
     if _client is None:
         _client = MongoClient(settings.MONGODB_URI)
-    return _client[settings.MONGODB_DB_NAME]
+    db = _client[settings.MONGODB_DB_NAME]
+    if not _indexes_ensured:
+        _ensure_indexes(db)
+        _indexes_ensured = True
+    return db
+
+
+def _ensure_indexes(db) -> None:
+    db["sessions"].create_index([("owner", ASCENDING), ("updated_at", DESCENDING)])
+    db["tasks"].create_index("created_at", expireAfterSeconds=86400)
 
 
 def _sessions():
@@ -32,21 +42,22 @@ def create_session(title: str = "New chat", owner: str = "") -> dict:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     _sessions().insert_one(doc)
-    return _clean(doc)
+    return _clean(doc.copy())
 
 
-def get_session(session_id: str, owner: str = "") -> dict | None:
+def get_session(session_id: str, owner: str = "", history_limit: int | None = None) -> dict | None:
     query: dict = {"_id": session_id}
     if owner:
         query["owner"] = owner
-    doc = _sessions().find_one(query)
-    return _clean(doc) if doc else None
+    projection = {"messages": {"$slice": -history_limit}} if history_limit else None
+    doc = _sessions().find_one(query, projection)
+    return _clean(doc.copy()) if doc else None
 
 
 def list_sessions(owner: str = "") -> list[dict]:
     query: dict = {"owner": owner} if owner else {}
-    docs = _sessions().find(query, {"messages": 0}).sort("updated_at", -1).limit(50)
-    return [_clean(d) for d in docs]
+    docs = _sessions().find(query, {"messages": 0}).sort("updated_at", DESCENDING).limit(50)
+    return [_clean(d.copy()) for d in docs]
 
 
 def append_message(session_id: str, role: str, content: str, citations: list | None = None) -> dict:

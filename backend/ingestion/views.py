@@ -5,7 +5,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from chat.db import create_session, delete_session, get_session
 from .indexer import (
     start_index_zip, start_index_file, start_reindex_zip,
-    get_task_status, get_session_files, MAX_ZIP_BYTES,
+    get_task_status, get_session_files, delete_session_collection, MAX_ZIP_BYTES,
 )
 
 
@@ -17,23 +17,25 @@ class UploadView(APIView):
         session = create_session("Indexing…", owner=owner)
         session_id = session["id"]
 
+        def _abort(msg, status=400):
+            delete_session(session_id)
+            delete_session_collection(session_id)
+            return Response({"error": msg}, status=status)
+
         if "file" in request.FILES:
             f = request.FILES["file"]
             if not f.name.endswith(".zip"):
-                delete_session(session_id)
-                return Response({"error": "Only .zip files are accepted."}, status=400)
+                return _abort("Only .zip files are accepted.")
             if f.size > MAX_ZIP_BYTES:
-                delete_session(session_id)
                 mb = f.size // 1024 // 1024
-                return Response({"error": f"ZIP too large ({mb} MB). Maximum is 100 MB."}, status=400)
+                return _abort(f"ZIP too large ({mb} MB). Maximum is 250 MB.")
             task_id = start_index_zip(f.read(), session_id)
             return Response({"task_id": task_id, "session_id": session_id, "source": f.name}, status=202)
 
         source = request.data.get("source")
         filename = request.data.get("filename", "unnamed.py")
         if not source:
-            delete_session(session_id)
-            return Response({"error": "Provide a 'file' (ZIP) or 'source' + 'filename'."}, status=400)
+            return _abort("Provide a 'file' (ZIP) or 'source' + 'filename'.")
         task_id = start_index_file(source, filename, session_id)
         return Response({"task_id": task_id, "session_id": session_id, "source": filename}, status=202)
 
