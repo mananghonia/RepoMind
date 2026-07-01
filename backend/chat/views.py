@@ -63,9 +63,12 @@ def _is_rate_limited(request, limit=20, window=60):
 from agent.graph import run_agent, stream_agent
 from ingestion.indexer import delete_session_collection
 from .db import (
-    create_session, get_session, list_sessions,
+    create_session, get_session, list_sessions, count_sessions,
     append_message, delete_session, rename_session, auto_title_session,
+    check_and_increment_daily_usage, MAX_SESSIONS_PER_USER,
 )
+
+MAX_QUESTION_LEN = 2000
 
 
 class SessionListView(APIView):
@@ -76,6 +79,11 @@ class SessionListView(APIView):
             return Response({"error": f"Database error: {exc}"}, status=503)
 
     def post(self, request):
+        if count_sessions(request.user_id) >= MAX_SESSIONS_PER_USER:
+            return Response(
+                {"error": f"Session limit reached ({MAX_SESSIONS_PER_USER}). Delete some old chats first."},
+                status=429,
+            )
         try:
             title = request.data.get("title", "New chat")
             return Response(create_session(title, owner=request.user_id), status=201)
@@ -122,8 +130,12 @@ class QueryView(APIView):
         session_id = request.data.get("session_id")
         if not question:
             return Response({"error": "question is required."}, status=400)
+        if len(question) > MAX_QUESTION_LEN:
+            return Response({"error": f"Question too long. Maximum {MAX_QUESTION_LEN} characters."}, status=400)
         if not session_id:
             return Response({"error": "session_id is required."}, status=400)
+        if not check_and_increment_daily_usage(request.user_id):
+            return Response({"error": "Daily query limit reached. Try again tomorrow."}, status=429)
         try:
             session = get_session(session_id, owner=request.user_id, history_limit=10)
         except Exception as exc:
@@ -179,11 +191,17 @@ def stream_query_view(request):
 
     if not question:
         return JsonResponse({"error": "question is required."}, status=400)
+    if len(question) > MAX_QUESTION_LEN:
+        return JsonResponse({"error": f"Question too long. Maximum {MAX_QUESTION_LEN} characters."}, status=400)
     if not session_id:
         return JsonResponse({"error": "session_id is required."}, status=400)
 
+    user_id = getattr(request, "user_id", "")
+    if not check_and_increment_daily_usage(user_id):
+        return JsonResponse({"error": "Daily query limit reached. Try again tomorrow."}, status=429)
+
     try:
-        session = get_session(session_id, owner=getattr(request, "user_id", ""), history_limit=10)
+        session = get_session(session_id, owner=user_id, history_limit=10)
     except Exception as exc:
         return JsonResponse({"error": f"Database unavailable: {exc}"}, status=503)
 

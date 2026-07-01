@@ -3,11 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from pymongo import MongoClient, ASCENDING, DESCENDING
+from pymongo import MongoClient, ASCENDING, DESCENDING, ReturnDocument
 from django.conf import settings
 
 _client: MongoClient | None = None
 _indexes_ensured = False
+
+MAX_SESSIONS_PER_USER = 20
+DAILY_QUERY_LIMIT = 50
 
 
 def _get_db():
@@ -24,6 +27,7 @@ def _get_db():
 def _ensure_indexes(db) -> None:
     db["sessions"].create_index([("owner", ASCENDING), ("updated_at", DESCENDING)])
     db["tasks"].create_index("created_at", expireAfterSeconds=86400)
+    db["daily_usage"].create_index("created_at", expireAfterSeconds=172800)  # 48h TTL
 
 
 def _sessions():
@@ -58,6 +62,10 @@ def list_sessions(owner: str = "") -> list[dict]:
     query: dict = {"owner": owner} if owner else {}
     docs = _sessions().find(query, {"messages": 0}).sort("updated_at", DESCENDING).limit(50)
     return [_clean(d.copy()) for d in docs]
+
+
+def count_sessions(owner: str) -> int:
+    return _sessions().count_documents({"owner": owner})
 
 
 def append_message(session_id: str, role: str, content: str, citations: list | None = None) -> dict:
@@ -134,6 +142,28 @@ def set_suggested_questions(session_id: str, questions: list[str]) -> None:
         {"_id": session_id},
         {"$set": {"suggested_questions": questions}},
     )
+
+
+# ── Daily query usage ─────────────────────────────────────────────────────────
+
+def _daily_usage():
+    return _get_db()["daily_usage"]
+
+
+def check_and_increment_daily_usage(username: str, limit: int = DAILY_QUERY_LIMIT) -> bool:
+    """Atomically increments today's query count. Returns True if within limit."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"{username}:{today}"
+    result = _daily_usage().find_one_and_update(
+        {"_id": key},
+        {
+            "$inc": {"count": 1},
+            "$setOnInsert": {"created_at": datetime.now(timezone.utc)},
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return result["count"] <= limit
 
 
 # ── Task persistence ──────────────────────────────────────────────────────────

@@ -1,12 +1,35 @@
+import io
+import zipfile
+from pathlib import Path
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 
-from chat.db import create_session, delete_session, get_session
+from chat.db import create_session, delete_session, get_session, count_sessions, MAX_SESSIONS_PER_USER
 from .indexer import (
     start_index_zip, start_index_file, start_reindex_zip,
     get_task_status, get_session_files, delete_session_collection, MAX_ZIP_BYTES,
 )
+
+_CODE_EXTENSIONS = {
+    '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs', '.cpp', '.c',
+    '.h', '.cs', '.rb', '.php', '.swift', '.kt', '.vue', '.scala', '.lua',
+    '.r', '.m', '.sh', '.bash', '.yaml', '.yml', '.json', '.toml', '.html',
+    '.css', '.scss', '.sass', '.md',
+}
+
+
+def _zip_has_code(zip_bytes: bytes) -> bool:
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+            return any(
+                Path(name).suffix.lower() in _CODE_EXTENSIONS
+                for name in z.namelist()
+                if not name.endswith('/')
+            )
+    except zipfile.BadZipFile:
+        return False
 
 
 class UploadView(APIView):
@@ -14,6 +37,13 @@ class UploadView(APIView):
 
     def post(self, request):
         owner = getattr(request, "user_id", "")
+
+        if count_sessions(owner) >= MAX_SESSIONS_PER_USER:
+            return Response(
+                {"error": f"Session limit reached ({MAX_SESSIONS_PER_USER}). Delete some old chats first."},
+                status=429,
+            )
+
         session = create_session("Indexing…", owner=owner)
         session_id = session["id"]
 
@@ -29,7 +59,10 @@ class UploadView(APIView):
             if f.size > MAX_ZIP_BYTES:
                 mb = f.size // 1024 // 1024
                 return _abort(f"ZIP too large ({mb} MB). Maximum is 250 MB.")
-            task_id = start_index_zip(f.read(), session_id)
+            zip_bytes = f.read()
+            if not _zip_has_code(zip_bytes):
+                return _abort("ZIP contains no recognised code files. Please upload a repository ZIP.")
+            task_id = start_index_zip(zip_bytes, session_id)
             return Response({"task_id": task_id, "session_id": session_id, "source": f.name}, status=202)
 
         source = request.data.get("source")
@@ -66,7 +99,10 @@ class ReindexView(APIView):
         if f.size > MAX_ZIP_BYTES:
             mb = f.size // 1024 // 1024
             return Response({"error": f"ZIP too large ({mb} MB). Maximum is 250 MB."}, status=400)
-        task_id = start_reindex_zip(f.read(), session_id)
+        zip_bytes = f.read()
+        if not _zip_has_code(zip_bytes):
+            return Response({"error": "ZIP contains no recognised code files."}, status=400)
+        task_id = start_reindex_zip(zip_bytes, session_id)
         return Response({"task_id": task_id}, status=202)
 
 
